@@ -490,5 +490,18 @@ if __name__ == "__main__":
         batch_size=50        # Add 50 samples per batch
     )
 
-    analyze_adaptive_results(sampler)
+    sampler_results, f_adaptive, f_unc_adaptive = analyze_adaptive_results(sampler)
     visualize_adaptive_process(sampler)
+
+    # Save results in the same format as other experiments
+    output_data = {
+        "decay data": [sampler.mean_estimates, sampler.all_measurements],
+        "endpoints": [2, 20],
+        "alpha": 0.95,
+        "samples_per_bounce": sampler.samples_collected
+    }
+
+    with open('AB_decay_adaptive.pickle', 'wb') as f:
+        pk.dump(output_data, f)
+
+    print("\nResults saved to: AB_decay_adaptive.pickle")

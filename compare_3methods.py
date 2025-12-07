@@ -1,3 +1,11 @@
+"""
+Comparison of Three Sampling Strategies for Network RB
+
+1. Original (Uniform 40): Baseline uniform sampling
+2. Fisher Optimal Corrected: Pre-computed optimal allocation based on actual variance
+3. Adaptive Sampling: Online learning-based optimization
+"""
+
 import pickle as pk
 import numpy as np
 import matplotlib
@@ -12,25 +20,17 @@ def exp(m, A, f):
 
 plt.close()
 
-# Load all datasets
+# Load three datasets
 datasets = {
-    'Uniform 20': 'AB_decay_uniform_20.pickle',
-    'Uniform 40': 'AB_decay_uniform_40.pickle',
-    'Center Heavy': 'AB_decay_weighted.pickle',
-    'Linear Increasing': 'AB_decay_linear_increasing.pickle',
-    'Linear Decreasing': 'AB_decay_linear_decreasing.pickle',
-    'Endpoints Heavy': 'AB_decay_endpoints_heavy.pickle',
-    'Fisher Optimal': 'AB_decay_fisher_optimal.pickle'
+    'Original (Uniform 40)': 'AB_decay_uniform_40.pickle',
+    'Fisher Optimal Corrected': 'AB_decay_fisher_corrected.pickle',
+    'Adaptive Sampling': 'AB_decay_adaptive.pickle'
 }
 
 colors = {
-    'Uniform 20': '#FF6B6B',
-    'Uniform 40': '#4ECDC4',
-    'Center Heavy': '#45B7D1',
-    'Linear Increasing': '#96CEB4',
-    'Linear Decreasing': '#FFEAA7',
-    'Endpoints Heavy': '#DDA15E',
-    'Fisher Optimal': '#FF1493'
+    'Original (Uniform 40)': '#4ECDC4',
+    'Fisher Optimal Corrected': '#FF6B6B',
+    'Adaptive Sampling': '#45B7D1'
 }
 
 # Set up figure with two subplots
@@ -87,12 +87,12 @@ for label, filename in datasets.items():
         # Plot sequence length averages (main plot)
         ax1.scatter(range(endpoints[0], endpoints[1]+1),
                    [fid_means[i] for i in range(endpoints[0], endpoints[1]+1)],
-                   color=color, label=f'{label}', s=80, alpha=0.9, zorder=10)
+                   color=color, label=f'{label}', s=100, alpha=0.9, zorder=10)
 
         # Plot exponential fit
         ax1.plot(range(endpoints[0], endpoints[1]+1),
                 [exp(m, popt[0], popt[1]) for m in range(endpoints[0], endpoints[1]+1)],
-                color=color, alpha=0.7, linewidth=2.5, zorder=5)
+                color=color, alpha=0.7, linewidth=3, zorder=5)
 
 # Compute studentized confidence interval
 h = t.ppf((1 + 0.95) / 2., 18 - 2)
@@ -101,8 +101,8 @@ h = t.ppf((1 + 0.95) / 2., 18 - 2)
 ax1.set_xlabel("Number of A $\\to$ B $\\to$ A bounces", fontsize=18)
 ax1.set_ylabel("Sequence mean $b_m$", fontsize=18)
 ax1.set_xticks(np.arange(2, 21, 2))
-ax1.legend(loc='upper right', fontsize=13, ncol=2)
-ax1.set_title("Comparison of Different Sampling Patterns", fontsize=22, fontweight='bold')
+ax1.legend(loc='upper right', fontsize=14)
+ax1.set_title("Comparison of Three Sampling Strategies", fontsize=22, fontweight='bold')
 ax1.grid(True, alpha=0.3)
 
 # Second subplot: Sample distribution visualization
@@ -110,17 +110,14 @@ ax2 = plt.subplot(2, 1, 2)
 
 # Plot sample distributions
 offset = 0
-bar_width = 0.11  # Adjusted for 7 patterns
+bar_width = 0.25
 bounce_numbers = range(2, 21)
 
-for i, (label, color_val) in enumerate([(k, colors[k]) for k in ['Uniform 20', 'Uniform 40', 'Center Heavy', 'Linear Increasing', 'Linear Decreasing', 'Endpoints Heavy', 'Fisher Optimal']]):
+for i, (label, color_val) in enumerate([(k, colors[k]) for k in ['Original (Uniform 40)', 'Fisher Optimal Corrected', 'Adaptive Sampling']]):
     samples = results[label]['samples_per_bounce']
     if samples is None:
         # Uniform distribution
-        if 'Uniform 20' in label:
-            samples = {m: 20 for m in range(2, 21)}
-        else:
-            samples = {m: 40 for m in range(2, 21)}
+        samples = {m: 40 for m in range(2, 21)}
 
     sample_counts = [samples.get(m, 0) for m in bounce_numbers]
     positions = [x + offset for x in bounce_numbers]
@@ -130,24 +127,24 @@ for i, (label, color_val) in enumerate([(k, colors[k]) for k in ['Uniform 20', '
 ax2.set_xlabel("Number of bounces", fontsize=16)
 ax2.set_ylabel("Number of samples", fontsize=16)
 ax2.set_title("Sample Distribution per Bounce Number", fontsize=20, fontweight='bold')
-ax2.set_xticks([x + bar_width * 2.5 for x in bounce_numbers])
+ax2.set_xticks([x + bar_width for x in bounce_numbers])
 ax2.set_xticklabels(bounce_numbers)
-ax2.legend(loc='best', fontsize=11, ncol=3)
+ax2.legend(loc='best', fontsize=12)
 ax2.grid(True, alpha=0.3, axis='y')
 
 plt.tight_layout()
 
 # Save figure
-fig.savefig("all_patterns_comparison.pdf", transparent=False, dpi=150)
-print("Comparison figure saved as all_patterns_comparison.pdf")
+fig.savefig("comparison_3methods.pdf", transparent=False, dpi=150)
+print("Comparison figure saved as comparison_3methods.pdf")
 
 # Print summary statistics
 print("\n" + "="*80)
-print("Summary of All Sampling Patterns")
+print("Summary of Three Sampling Strategies")
 print("="*80)
 
 summary_data = []
-for label in ['Uniform 20', 'Uniform 40', 'Center Heavy', 'Linear Increasing', 'Linear Decreasing', 'Endpoints Heavy', 'Fisher Optimal']:
+for label in ['Original (Uniform 40)', 'Fisher Optimal Corrected', 'Adaptive Sampling']:
     popt = results[label]['popt']
     pcov = results[label]['pcov']
     uncertainty = h * np.sqrt(pcov[1,1])
@@ -169,28 +166,30 @@ for label in ['Uniform 20', 'Uniform 40', 'Center Heavy', 'Linear Increasing', '
 # Sort by relative uncertainty (best first)
 summary_data.sort(key=lambda x: x['rel_uncertainty'])
 
-print(f"\n{'Rank':<6}{'Pattern':<20}{'Fidelity':<15}{'Uncertainty':<15}{'Rel. Unc.':<12}{'Samples':<10}")
-print("-"*80)
+print(f"\n{'Rank':<6}{'Strategy':<30}{'Fidelity':<15}{'Uncertainty':<15}{'Rel. Unc.':<12}{'Samples':<10}")
+print("-"*90)
 for rank, data in enumerate(summary_data, 1):
-    print(f"{rank:<6}{data['name']:<20}{data['fidelity']:.4f}{' ± ':<3}{data['uncertainty']:.4f}{'   ':<3}"
+    print(f"{rank:<6}{data['name']:<30}{data['fidelity']:.4f}{' ± ':<3}{data['uncertainty']:.4f}{'   ':<3}"
           f"{data['rel_uncertainty']:>6.2f}%{'   ':<3}{data['total_samples']:<10}")
 
 print("\n" + "="*80)
-print("Key Insights:")
+print("Key Findings:")
 print("-"*80)
 
-# Find best pattern among 760-sample ones
-best_760 = [d for d in summary_data if d['total_samples'] == 760][0]
-print(f"Best performing pattern (760 samples): {best_760['name']}")
-print(f"  - Relative uncertainty: {best_760['rel_uncertainty']:.2f}%")
+# Find baseline
+baseline = [d for d in summary_data if 'Original' in d['name']][0]
+print(f"\nBaseline (Original Uniform 40):")
+print(f"  - Relative uncertainty: {baseline['rel_uncertainty']:.2f}%")
 
-# Compare with uniform 40
-uniform_40 = [d for d in summary_data if d['name'] == 'Uniform 40'][0]
-print(f"\nUniform 40 baseline (760 samples):")
-print(f"  - Relative uncertainty: {uniform_40['rel_uncertainty']:.2f}%")
-
-if best_760['name'] != 'Uniform 40':
-    improvement = ((uniform_40['rel_uncertainty'] - best_760['rel_uncertainty']) / uniform_40['rel_uncertainty']) * 100
-    print(f"\nImprovement over Uniform 40: {improvement:.1f}%")
+# Compare optimized methods
+for method in summary_data:
+    if 'Original' not in method['name']:
+        improvement = ((baseline['rel_uncertainty'] - method['rel_uncertainty']) / baseline['rel_uncertainty']) * 100
+        print(f"\n{method['name']}:")
+        print(f"  - Relative uncertainty: {method['rel_uncertainty']:.2f}%")
+        if improvement > 0:
+            print(f"  - Improvement over baseline: {improvement:.2f}%")
+        else:
+            print(f"  - Performance: {improvement:.2f}% (worse than baseline)")
 
 print("="*80)
