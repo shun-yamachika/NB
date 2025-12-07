@@ -98,7 +98,13 @@ for i in range(n_nodes-1):
 
 min_bounces = 2
 max_bounces= 20
-two_node_RB = MultiNodeRB(n_nodes=n_nodes,min_bounces = min_bounces,max_bounces = max_bounces,n_samples =40)
+
+# Fisher Optimal (Corrected - using actual variance)
+samples_per_bounce = {
+    2: 25, 3: 25, 4: 80, 5: 80, 6: 35, 7: 25, 8: 80, 9: 80, 10: 25, 11: 25,
+    12: 25, 13: 25, 14: 25, 15: 80, 16: 25, 17: 25, 18: 25, 19: 25, 20: 25
+}
+two_node_RB = MultiNodeRB(n_nodes=n_nodes, min_bounces=min_bounces, max_bounces=max_bounces, n_samples=samples_per_bounce)
 
 
 
@@ -126,6 +132,13 @@ ns.sim_run()
 
 
 #Extract fidelity data (both average per sequence length and fidelity for each sequence) and pickle
-with open('AB_decay.pickle', 'wb') as f:
-  pk.dump({"decay data":two_node_RB.get_fidelity(),"endpoints":[min_bounces,max_bounces]},f)
+output_file = 'AB_decay_fisher_corrected.pickle'
+with open(output_file, 'wb') as f:
+  pk.dump({
+    "decay data": two_node_RB.get_fidelity(),
+    "endpoints": [min_bounces, max_bounces],
+    "alpha": alpha,
+    "samples_per_bounce": two_node_RB.get_samples_per_bounce()
+  }, f)
+print(f"Results saved to {output_file}")
 

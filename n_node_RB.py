@@ -36,7 +36,16 @@ class MultiNodeRB(Protocol):
         self._n_nodes = n_nodes
         self._counter = 1
         self.nodes= []
-        self._n_samples = n_samples
+
+        # Support both dict and int for n_samples
+        # If dict: {bounce_number: num_samples}
+        # If int: uniform samples for all bounce numbers
+        if isinstance(n_samples, dict):
+            self._n_samples_dict = n_samples
+        else:
+            # Create uniform dict for backward compatibility
+            self._n_samples_dict = {m: n_samples for m in range(min_bounces, max_bounces + 1)}
+
         self._current_sample = 1
         self._end_fidelity = []
         self._mean_fidelity_bounce = {}
@@ -125,9 +134,12 @@ class MultiNodeRB(Protocol):
 
             )
 
-            if self._current_sample < self._n_samples:
+            # Get the number of samples for current bounce number
+            n_samples_current = self._n_samples_dict[self._max_bounces_current_round]
+
+            if self._current_sample < n_samples_current:
                 #reset simulator for next random sequence
-                print(f"sample {self._current_sample} of {self._n_samples} at {self._max_bounces_current_round}")
+                print(f"sample {self._current_sample} of {n_samples_current} at {self._max_bounces_current_round}")
                 self._current_sample = self._current_sample + 1
                 self._counter = 1
                 node.qmemory.reset()
@@ -348,6 +360,10 @@ class MultiNodeRB(Protocol):
     def get_fidelity(self):
         """Return the fidelity of a single m bounce experiment."""
         return [self._mean_fidelity_bounce, self._array_fidelity_bounce]
+
+    def get_samples_per_bounce(self):
+        """Return the number of samples per bounce number."""
+        return self._n_samples_dict
 
     def _generate_cliffords(self):
     # Sets up an array of Clifford instructions for the Clifford gates
