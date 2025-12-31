@@ -1,0 +1,339 @@
+#+TITLE: Weighted Least Squares for Network RB Fitting
+#+AUTHOR: Quantum Network RB Analysis
+#+DATE: 2026-01-01
+
+* 概要
+
+量子ネットワークRB（Randomized Benchmarking）において、各シーケンス長（バウンス回数m）に異なる試行回数を割り当てた場合の最適なフィッティング手法を検討した。
+
+** 目的
+- 各m∈Mで試行回数が不均一な場合に適切なフィッティングを行う
+- フィッティングパラメータ（平均忠実度f）の不確実性を最小化する
+
+** データ
+- 2ノードチェーン: m ∈ [2, 20] (19点)
+- 試行回数: 各mでランダムに5～50試行
+- 繰り返し回数: 10回の実験で平均を取得
+
+* 実装した手法
+
+** 1. OLS (Ordinary Least Squares)
+*** 説明
+通常の最小二乗法。重み付けなし。
+
+*** 式
+#+BEGIN_SRC python
+# 重み付けなし
+popt, pcov = curve_fit(exp, m_values, fid_means)
+#+END_SRC
+
+*** 性能
+- 相対不確実性: 0.004367 ± 0.000322
+- 改善率: baseline (0%)
+
+** 2. WLS-N (Weighted Least Squares - Trial count only)
+*** 説明
+試行回数nのみで重み付け。バウンス長mによるノイズの違いを無視。
+
+*** 式
+#+BEGIN_SRC python
+sigma = 1.0 / sqrt(n)
+w = n
+#+END_SRC
+
+*** 性能
+- 相対不確実性: 0.053419 ± 0.003793
+- 改善率: -1123% (大幅悪化)
+- 評価: ❌ 失敗
+
+*** 問題点
+- mによるノイズ構造を完全に無視
+- m=2とm=20を同じノイズレベルと仮定（誤り）
+
+** 3. WLS-MN (Weighted Least Squares - Model-based)
+*** 説明
+バウンス長mと試行回数nの両方で重み付け。
+mによる標準偏差の変化をモデル化。
+
+*** 式
+#+BEGIN_SRC python
+# モデル: std(m) = a + b*m
+# 全50試行データから推定: std(m) = 0.030641 + 0.000982 * m
+# R² = 0.6012
+
+sigma(m, n) = (a + b*m) / sqrt(n)
+w(m, n) = n / (a + b*m)²
+#+END_SRC
+
+*** 性能
+- 相対不確実性: 0.002186 ± 0.000148
+- 改善率: +49.95%
+- 評価: ✅ 成功
+
+*** 利点
+- mとnの両方を考慮
+- 実測データ不要（モデルのみ）
+- 計算コスト低
+
+*** 欠点
+- モデルの精度に依存（R²=0.60は中程度）
+
+** 4. WLS-Empirical (Weighted Least Squares - Empirical)
+*** 説明
+各mでの実測標準偏差を使用。試行回数で補正。
+
+*** 式
+#+BEGIN_SRC python
+# 各mで実測標準偏差を計算
+sigma_empirical(m) = std(data[m], ddof=1)
+
+# 試行回数で補正
+sigma(m, n) = sigma_empirical(m) / sqrt(n)
+w(m, n) = n / sigma_empirical(m)²
+#+END_SRC
+
+*** 性能
+- 相対不確実性: 0.002008 ± 0.000112
+- 改善率: +54.03%
+- 評価: ✅ 最良
+
+*** 利点
+- 実際のデータのノイズを直接反映
+- mとnの両方を適切に考慮
+- シンプルで理論的に正当
+
+*** 欠点
+- 各実験で生データが必要
+- 試行回数が少ないと推定が不安定（ただしn≥5で十分実用的）
+
+** 5. WLS-Combined (Weighted Least Squares - Combined)
+*** 説明
+モデルと実測データをShrinkage推定で組み合わせる。
+試行回数に応じて混合比率を調整。
+
+*** 式
+#+BEGIN_SRC python
+# Shrinkage factor
+alpha(n) = min(sqrt(n/30), 1.0)
+
+# 組み合わせ
+sigma_combined(m, n) = alpha(n) * sigma_empirical(m) + (1 - alpha(n)) * sigma_model(m)
+
+# 試行回数で補正
+sigma(m, n) = sigma_combined(m, n) / sqrt(n)
+#+END_SRC
+
+*** 性能
+- 相対不確実性: 0.002074 ± 0.000148
+- 改善率: +52.52%
+- 評価: △ 中間的
+
+*** 問題点
+- 複雑
+- WLS-Empiricalより悪化（0.002008 → 0.002074）
+- モデルの精度が低い（R²=0.60）ため、実測データを汚染
+
+* 結果の比較
+
+** 性能一覧表
+
+| 手法            | 相対不確実性       | 改善率      | 評価 |
+|-----------------+--------------------+-------------+------|
+| OLS             | 0.004367 ± 0.000322 | baseline    | 基準 |
+| WLS-N           | 0.053419 ± 0.003793 | -1123%      | ❌    |
+| WLS-MN          | 0.002186 ± 0.000148 | +50.0%      | ✅    |
+| WLS-Empirical   | 0.002008 ± 0.000112 | +54.0%      | ✅✅  |
+| WLS-Combined    | 0.002074 ± 0.000148 | +52.5%      | △    |
+
+** 重要な発見
+
+*** mの構造を考慮することが本質的
+- OLS → WLS-MN: 50%改善
+- バウンス長によるノイズ変化のモデル化が最重要
+
+*** 実測データの追加効果は限定的
+- WLS-MN (50%) → WLS-Empirical (54%): わずか4%の追加改善
+- モデルが十分正確なら、実測データの効果は小さい
+
+*** バウンス長mと標準偏差の関係
+#+BEGIN_SRC
+相関係数:
+- m vs std:      0.7754  (強い正の相関)
+- m vs CV:       0.9394  (非常に強い正の相関)
+- mean vs std:  -0.7977  (強い負の相関)
+
+線形モデル: std(m) = 0.030641 + 0.000982 * m
+R² = 0.6012
+#+END_SRC
+
+mが大きいほど標準偏差が増加する明確な傾向が観測された。
+
+* 推奨手法
+
+** 実測データが利用可能な場合
+
+*** WLS-Empirical を推奨
+
+#+BEGIN_SRC python
+def wls_empirical(full_data, endpoints, n_samples_per_m):
+    """
+    Weighted Least Squares with empirical standard deviations.
+    """
+    min_m, max_m = endpoints
+    m_values = list(range(min_m, max_m + 1))
+    fid_raw_data = full_data["decay data"][1]
+
+    fid_means = []
+    fid_stds = []
+    n_samples_list = []
+
+    for m in m_values:
+        n_samples = n_samples_per_m[m]
+        subset = fid_raw_data[m][:n_samples]
+        fid_means.append(np.mean(subset))
+        fid_stds.append(np.std(subset, ddof=1))
+        n_samples_list.append(n_samples)
+
+    # Compute weights
+    sigma = np.array(fid_stds) / np.sqrt(np.array(n_samples_list))
+    sigma = np.where(sigma > 0, sigma, 1e-10)  # Avoid zero
+
+    # Fit
+    popt, pcov = curve_fit(exp, m_values, fid_means,
+                          sigma=sigma, absolute_sigma=True)
+
+    return popt, pcov
+#+END_SRC
+
+理由:
+- 最良の性能（54%改善）
+- シンプルで理論的に正当
+- mとnの両方を適切に考慮
+
+** 実測データが困難な場合
+
+*** WLS-MN を推奨
+
+#+BEGIN_SRC python
+def wls_model_based(full_data, endpoints, n_samples_per_m,
+                    std_model_params):
+    """
+    Weighted Least Squares with model-based standard deviations.
+
+    std_model_params: (intercept, slope) for std(m) = intercept + slope*m
+    """
+    min_m, max_m = endpoints
+    m_values = list(range(min_m, max_m + 1))
+    fid_raw_data = full_data["decay data"][1]
+
+    fid_means = []
+    n_samples_list = []
+
+    for m in m_values:
+        n_samples = n_samples_per_m[m]
+        subset = fid_raw_data[m][:n_samples]
+        fid_means.append(np.mean(subset))
+        n_samples_list.append(n_samples)
+
+    # Model-based sigma
+    intercept, slope = std_model_params
+    sigma_m = intercept + slope * np.array(m_values)
+    sigma_m = np.maximum(sigma_m, 1e-10)
+
+    # Apply trial count correction
+    sigma = sigma_m / np.sqrt(np.array(n_samples_list))
+
+    # Fit
+    popt, pcov = curve_fit(exp, m_values, fid_means,
+                          sigma=sigma, absolute_sigma=True)
+
+    return popt, pcov
+#+END_SRC
+
+理由:
+- 次善の性能（50%改善）
+- WLS-Empiricalとの差はわずか4%
+- 実測データ不要
+- 一度モデルを推定すれば繰り返し使える
+
+* 理論的背景
+
+** 重み付き最小二乗法の最適性
+
+*** Gauss-Markov定理
+誤差が以下を満たす場合、重み w = 1/σ² を使ったWLSは最良線形不偏推定量（BLUE）:
+1. E[ε] = 0
+2. Var[ε] = σ²
+3. Cov[ε_i, ε_j] = 0 (i≠j)
+
+*** 標準誤差の理論
+測定値の平均の標準誤差:
+#+BEGIN_SRC
+SEM = σ / sqrt(n)
+
+where:
+  σ: 真の標準偏差
+  n: 試行回数
+#+END_SRC
+
+** 各手法の重み式
+
+*** OLS
+#+BEGIN_SRC
+w = 1 (全て同じ)
+#+END_SRC
+
+*** WLS-N
+#+BEGIN_SRC
+w(n) = n
+σ = 1/√n
+#+END_SRC
+
+*** WLS-MN
+#+BEGIN_SRC
+w(m, n) = n / (a + b·m)²
+σ = (a + b·m) / √n
+#+END_SRC
+
+*** WLS-Empirical
+#+BEGIN_SRC
+w(m, n) = n / std(data[m])²
+σ = std(data[m]) / √n
+#+END_SRC
+
+* ファイル一覧
+
+** 実装スクリプト
+- =compare_ols_wls_2node.py=: OLS vs WLS-N vs WLS-Empirical の比較（初期版）
+- =compare_4methods.py=: OLS, WLS-M, WLS-N, WLS-MN の比較
+- =compare_5methods.py=: 全5手法の比較（最終版）
+
+** 分析スクリプト
+- =analyze_std_vs_m.py=: 標準偏差とバウンス長の関係を分析
+
+** シミュレーションスクリプト
+- =2_chain_50samples.py=: 2ノード、50試行のシミュレーション
+- =n_chain_50samples.py=: マルチノード、50試行のシミュレーション
+
+** データファイル
+- =AB_decay_50samples.pickle=: 2ノードシミュレーション結果
+- ={n}_RB_decay_50samples.pickle=: マルチノードシミュレーション結果（n=2,3,4,5,6）
+
+** 結果ファイル
+- =compare_4methods_results.pickle=: 4手法比較結果
+- =compare_5methods_results.pickle=: 5手法比較結果
+- =std_vs_m_statistics.pickle=: 標準偏差分析結果
+- =std_vs_m_analysis.png=: 標準偏差の可視化
+
+* 結論
+
+各m∈Mに異なる試行回数を割り当てた場合の最適なフィッティング手法として、
+*WLS-Empirical (実測標準偏差 + 試行回数補正)* を推奨する。
+
+この手法により:
+- 不確実性を54%削減（0.004367 → 0.002008）
+- シンプルで理論的に正当
+- mとnの両方を適切に考慮
+
+バウンス長によるノイズ構造のモデル化が本質的に重要であり、
+実測データが利用できない場合でもWLS-MNで50%の改善が達成できる。
