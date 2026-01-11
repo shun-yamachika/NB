@@ -22,7 +22,7 @@ print("="*80)
 # ================================================================================
 # データ読み込み
 # ================================================================================
-with open('AB_decay_200samples_1to40.pickle', 'rb') as f:
+with open('AB_decay_200samples_main.pickle', 'rb') as f:
     data = pk.load(f)
 
 fid_raw_data = data["decay data"][1]
